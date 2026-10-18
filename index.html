@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Λέξεις</title>
+
+  <!-- PWA: манифест + иконка для экрана «Домой» на iOS -->
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/icon-180.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Λέξεις">
+  <meta name="theme-color" content="#1d4ed8">
+
+  <style>
+    :root { --bg:#f6f7fb; --card:#fff; --text:#111827; --muted:#6b7280; --accent:#1d4ed8; }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg:#0b0f19; --card:#161b2a; --text:#e5e7eb; --muted:#9ca3af; --accent:#60a5fa; }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; font: 17px/1.4 -apple-system, system-ui, sans-serif;
+      background: var(--bg); color: var(--text);
+      /* отступы под «чёлку» и home-индикатор в standalone-режиме */
+      padding: calc(env(safe-area-inset-top) + 16px) 16px calc(env(safe-area-inset-bottom) + 16px);
+    }
+    h1 { margin: 0 0 4px; font-size: 28px; }
+    .status { color: var(--muted); font-size: 13px; margin-bottom: 16px; }
+    .box { background: var(--card); border-radius: 14px; padding: 14px; margin-bottom: 14px; }
+    input { width: 100%; padding: 12px; font-size: 17px; border-radius: 10px;
+            border: 1px solid #8884; background: transparent; color: inherit; margin-bottom: 8px; }
+    button { width: 100%; padding: 12px; font-size: 17px; border: 0; border-radius: 10px;
+             background: var(--accent); color: #fff; font-weight: 600; }
+    button.ghost { background: transparent; color: var(--accent); }
+    ul { list-style: none; padding: 0; margin: 0; }
+    li { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #8882; }
+    li:last-child { border: 0; }
+    .el { font-weight: 600; }
+    .tr { color: var(--muted); }
+    #card { text-align: center; padding: 28px 14px; cursor: pointer; user-select: none; }
+    #front { font-size: 32px; font-weight: 700; }
+    #back { color: var(--muted); margin-top: 8px; min-height: 1.4em; }
+  </style>
+</head>
+<body>
+  <h1>Λέξεις</h1>
+  <div class="status" id="status">…</div>
+
+  <div class="box" id="card" hidden>
+    <div id="front"></div>
+    <div id="back"></div>
+  </div>
+  <button id="next" class="ghost" hidden>Следующее слово</button>
+
+  <form class="box" id="form" autocomplete="off">
+    <input id="el" placeholder="Ελληνικά — например, καλημέρα" lang="el" required>
+    <input id="ru" placeholder="Перевод" required>
+    <button>Добавить</button>
+  </form>
+
+  <div class="box"><ul id="list"></ul></div>
+
+<script>
+  // ---------- Данные: пока localStorage, в настоящем приложении — IndexedDB (Dexie) ----------
+  const KEY = 'words';
+  const load = () => JSON.parse(localStorage.getItem(KEY) || '[]');
+  const save = (w) => localStorage.setItem(KEY, JSON.stringify(w));
+  let words = load();
+
+  const $ = (id) => document.getElementById(id);
+
+  function render() {
+    $('list').innerHTML = words.map((w, i) =>
+      `<li><span class="el">${esc(w.el)}</span><span class="tr">${esc(w.ru)}</span></li>`
+    ).join('') || '<li class="tr">Пока пусто</li>';
+    $('card').hidden = $('next').hidden = words.length === 0;
+    if (words.length && !$('front').textContent) nextCard();
+  }
+  const esc = (s) => s.replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+  $('form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    words.unshift({ el: $('el').value.trim(), ru: $('ru').value.trim(), added: Date.now() });
+    save(words);
+    e.target.reset(); $('el').focus();
+    render();
+  });
+
+  // ---------- Простейшая карточка: тап — показать перевод ----------
+  function nextCard() {
+    const w = words[Math.floor(Math.random() * words.length)];
+    $('front').textContent = w.el;
+    $('back').textContent = '';
+    $('card').dataset.answer = w.ru;
+  }
+  $('card').addEventListener('click', () => $('back').textContent = $('card').dataset.answer);
+  $('next').addEventListener('click', nextCard);
+
+  // ---------- PWA-диагностика: видно, что реально работает ----------
+  async function status() {
+    const standalone = navigator.standalone || matchMedia('(display-mode: standalone)').matches;
+    let persisted = false;
+    // Просим браузер не удалять данные (на iOS у установленных PWA это обычно уже так)
+    if (navigator.storage?.persist) persisted = await navigator.storage.persist();
+    $('status').textContent = [
+      standalone ? '📱 установлено' : '🌐 в браузере — добавь на экран «Домой»',
+      navigator.onLine ? 'онлайн' : 'офлайн',
+      persisted ? 'хранилище постоянное' : 'хранилище обычное',
+    ].join(' · ');
+  }
+  addEventListener('online', status); addEventListener('offline', status);
+
+  // ---------- Service worker = работа без интернета ----------
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
+
+  render(); status();
+</script>
+</body>
+</html>
